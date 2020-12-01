@@ -9,9 +9,9 @@ lazy val `slick-joda-mapper` = project.in(file("."))
   .settings(publishingSettings)
   .settings(
     name := "slick-joda-mapper",
-    organization := "com.github.tototoshi",
-    version := "2.4.2",
-    crossScalaVersions ++= Seq("2.11.12", "2.12.12", "2.13.4"),
+    organization := "com.github.xuwei-k",
+    version := "2.4.3-fork-1",
+    crossScalaVersions := Seq("2.11.12", "2.12.12", "2.13.4"),
     scalaVersion := "2.12.12",
     scalacOptions ++= Seq("-deprecation", "-language:_"),
     libraryDependencies ++= Seq(
@@ -53,17 +53,17 @@ def _publishTo(v: String) = {
 }
 
 lazy val _pomExtra =
-  <url>http://github.com/tototoshi/slick-joda-mapper</url>
+  <url>http://github.com/xuwei-k/slick-joda-mapper</url>
     <licenses>
       <license>
         <name>Two-clause BSD-style license</name>
-        <url>https://github.com/tototoshi/slick-joda-mapper/blob/master/LICENSE.txt</url>
+        <url>https://github.com/xuwei-k/slick-joda-mapper/blob/master/LICENSE.txt</url>
         <distribution>repo</distribution>
       </license>
     </licenses>
     <scm>
-      <url>git@github.com:tototoshi/slick-joda-mapper.git</url>
-      <connection>scm:git:git@github.com:tototoshi/slick-joda-mapper.git</connection>
+      <url>git@github.com:xuwei-k/slick-joda-mapper.git</url>
+      <connection>scm:git:git@github.com:xuwei-k/slick-joda-mapper.git</connection>
     </scm>
     <developers>
       <developer>
