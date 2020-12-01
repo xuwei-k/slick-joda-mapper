@@ -125,16 +125,26 @@ class JodaInstantMapper(val driver: JdbcProfile) {
     with JodaInstantSqlTimestampConverter {
     def zero = new DateTime(0L)
     def sqlType = java.sql.Types.TIMESTAMP
-    override def sqlTypeName(sym: scala.Option[slick.ast.FieldSymbol]): String =
-      driver.columnTypes.timestampJdbcType.sqlTypeName(sym)
-    override def setValue(v: Instant, p: PreparedStatement, idx: Int): Unit =
-      p.setTimestamp(idx, toSqlType(v))
+    override def sqlTypeName(sym: scala.Option[slick.ast.FieldSymbol]): String = {
+      val x = driver.columnTypes.timestampJdbcType.sqlTypeName(sym)
+      println(("sqlTypeName", sym, x))
+      x
+    }
+
+    override def setValue(v: Instant, p: PreparedStatement, idx: Int): Unit = {
+      val x = p.setTimestamp(idx, toSqlType(v))
+      println(("setValue", v, idx, x))
+    }
+
     override def getValue(r: ResultSet, idx: Int): Instant =
       fromSqlType(r.getTimestamp(idx))
     override def updateValue(v: Instant, r: ResultSet, idx: Int): Unit =
       r.updateTimestamp(idx, toSqlType(v))
-    override def valueToSQLLiteral(value: Instant) =
-      driver.columnTypes.timestampJdbcType.valueToSQLLiteral(new Timestamp(value.getMillis()))
+    override def valueToSQLLiteral(value: Instant) = {
+      val x = driver.columnTypes.timestampJdbcType.valueToSQLLiteral(new Timestamp(value.getMillis()))
+      println(("valueToSQLLiteral", value, x))
+      x
+    }
   }
 
   object JodaGetResult extends JodaGetResult[Timestamp, Instant] with JodaInstantSqlTimestampConverter {
