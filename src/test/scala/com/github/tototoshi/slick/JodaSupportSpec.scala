@@ -33,7 +33,7 @@ import org.joda.time._
 import scala.concurrent.{ Await, Future }
 import scala.concurrent.duration._
 import slick.jdbc.{ GetResult, H2Profile, JdbcProfile, MySQLProfile, PostgresProfile }
-import java.util.{ Locale, TimeZone }
+import java.util.TimeZone
 
 import com.dimafeng.testcontainers.{ Container, ForAllTestContainer, JdbcDatabaseContainer, MySQLContainer, PostgreSQLContainer }
 import org.testcontainers.utility.DockerImageName
@@ -58,6 +58,7 @@ abstract class JodaSupportSpec extends AnyFunSpec
       dateTimeZone: DateTimeZone,
       localDate: LocalDate,
       dateTime: DateTime,
+      dateTimeWithZone: DateTime,
       instant: Instant,
       localDateTime: LocalDateTime,
       localTime: LocalTime,
@@ -72,6 +73,7 @@ abstract class JodaSupportSpec extends AnyFunSpec
     def dateTimeZone = column[DateTimeZone]("date_time_zone")
     def localDate = column[LocalDate]("local_date")
     def dateTime = column[DateTime]("date_time")
+    def dateTimeWithZone = column[DateTime]("date_time_with_zone")
     def instant = column[Instant]("instant")
     def localDateTime = column[LocalDateTime]("local_date_time")
     def localTime = column[LocalTime]("local_time")
@@ -81,7 +83,7 @@ abstract class JodaSupportSpec extends AnyFunSpec
     def optInstant = column[Option[Instant]]("opt_instant")
     def optLocalDateTime = column[Option[LocalDateTime]]("opt_local_date_time")
     def optLocalTime = column[Option[LocalTime]]("opt_local_time")
-    def * = (dateTimeZone, localDate, dateTime, instant, localDateTime, localTime, optDateTimeZone, optLocalDate, optDateTime, optInstant, optLocalDateTime, optLocalTime) <> (Jodas.tupled, Jodas.unapply _)
+    def * = (dateTimeZone, localDate, dateTime, dateTimeWithZone, instant, localDateTime, localTime, optDateTimeZone, optLocalDate, optDateTime, optInstant, optLocalDateTime, optLocalTime) <> (Jodas.tupled, Jodas.unapply _)
   }
 
   lazy val db = Database.forURL(url = jdbcUrl, user = jdbcUser, password = jdbcPassword, driver = jdbcDriver)
@@ -94,31 +96,42 @@ abstract class JodaSupportSpec extends AnyFunSpec
     def await(): A = Await.result(future, timeout)
   }
 
-  override def beforeEach(): Unit = {
-    super.beforeEach()
-    Locale.setDefault(Locale.JAPAN)
-    val tz = TimeZone.getTimeZone("Asia/Tokyo")
+  def withTimezone[A](zone: DateTimeZone)(f: => A): A = {
+    val tz = TimeZone.getTimeZone(zone.getID)
     TimeZone.setDefault(tz)
     DateTimeZone.setDefault(DateTimeZone.forID(tz.getID))
-
-    db.run(DBIO.seq(jodaTest.schema.create)).await()
+    try {
+      db.run(DBIO.seq(jodaTest.schema.create)).await()
+      f
+    } finally {
+      db.run(DBIO.seq(jodaTest.schema.drop)).await()
+    }
   }
 
-  override def afterEach(): Unit = {
-    db.run(DBIO.seq(jodaTest.schema.drop)).await()
-    super.afterEach()
+  val Tokyo = DateTimeZone.forID("Asia/Tokyo")
+  val London = DateTimeZone.forID("Europe/London")
+  val NewYork = DateTimeZone.forID("America/New_York")
+
+  val timezones = List(Tokyo, London, NewYork)
+
+  def test[A](f: => A): Unit = {
+    timezones.foreach(zone => withTimezone(zone) {
+      db.run(insertTestData()).await()
+      f
+    })
   }
 
   def insertTestData(): DBIOAction[Unit, NoStream, Effect.Write] = {
     DBIO.seq(
       jodaTest += Jodas(
-        DateTimeZone.forID("Asia/Tokyo"),
+        Tokyo,
         new LocalDate(2012, 12, 4),
         new DateTime(2012, 12, 4, 0, 0, 0, 0),
+        new DateTime(2012, 12, 4, 0, 0, 0, 0).withZone(Tokyo),
         new DateTime(2012, 12, 4, 0, 0, 0, 0).toInstant,
         new LocalDateTime(2012, 12, 4, 0, 0, 0, 0),
         new LocalTime(0),
-        Some(DateTimeZone.forID("Asia/Tokyo")),
+        Some(Tokyo),
         Some(new LocalDate(2012, 12, 4)),
         Some(new DateTime(2012, 12, 4, 0, 0, 0, 0)),
         Some(new DateTime(2012, 12, 4, 0, 0, 0, 0).toInstant),
@@ -127,13 +140,14 @@ abstract class JodaSupportSpec extends AnyFunSpec
       ),
       jodaTest +=
         Jodas(
-          DateTimeZone.forID("Europe/London"),
+          London,
           new LocalDate(2012, 12, 5),
           new DateTime(2012, 12, 5, 0, 0, 0, 0),
+          new DateTime(2012, 12, 5, 0, 0, 0, 0).withZone(London),
           new DateTime(2012, 12, 5, 0, 0, 0, 0).toInstant,
           new LocalDateTime(2012, 12, 5, 0, 0, 0, 0),
           new LocalTime(0),
-          Some(DateTimeZone.forID("Europe/London")),
+          Some(London),
           Some(new LocalDate(2012, 12, 5)),
           None,
           None,
@@ -142,13 +156,14 @@ abstract class JodaSupportSpec extends AnyFunSpec
         ),
       jodaTest +=
         Jodas(
-          DateTimeZone.forID("America/New_York"),
+          NewYork,
           new LocalDate(2012, 12, 6),
           new DateTime(2012, 12, 6, 0, 0, 0, 0),
+          new DateTime(2012, 12, 6, 0, 0, 0, 0).withZone(NewYork),
           new DateTime(2012, 12, 6, 0, 0, 0, 0).toInstant,
           new LocalDateTime(2012, 12, 6, 0, 0, 0, 0),
           new LocalTime(0),
-          Some(DateTimeZone.forID("America/New_York")),
+          Some(NewYork),
           Some(new LocalDate(2012, 12, 6)),
           None,
           None,
@@ -161,68 +176,82 @@ abstract class JodaSupportSpec extends AnyFunSpec
   describe("JodaSupport") {
 
     it("should enable us to use joda-time with slick") {
-      db.run(insertTestData()).await()
-      db.run(jodaTest.result).await() should have size 3
+      test {
+        db.run(jodaTest.result).await() should have size 3
+      }
+    }
+
+    it("date_time_with_zone") {
+      test {
+        db.run(jodaTest.result).await().map(_.dateTimeWithZone).map(_.getMillis).sorted should equal(List(
+          new DateTime(2012, 12, 4, 0, 0, 0, 0).withZone(Tokyo),
+          new DateTime(2012, 12, 5, 0, 0, 0, 0).withZone(London),
+          new DateTime(2012, 12, 6, 0, 0, 0, 0).withZone(NewYork),
+        ).map(_.getMillis).sorted)
+      }
     }
 
     it("should enable us to use joda-time with string interpolation API") {
-      db.run(insertTestData()).await()
-      db.run(sql"SELECT opt_date_time_zone FROM joda_test WHERE date_time_zone = 'Asia/Tokyo'"
-        .as[Option[DateTimeZone]].head).await() should be(Some(DateTimeZone.forID("Asia/Tokyo")))
-      db.run(sql"SELECT opt_local_date FROM joda_test WHERE local_date = ${new LocalDate(2012, 12, 4)}"
-        .as[Option[LocalDate]].head).await() should be(Some(new LocalDate(2012, 12, 4)))
-      db.run(sql"SELECT opt_date_time FROM joda_test WHERE date_time = ${new DateTime(2012, 12, 4, 0, 0, 0, 0)}"
-        .as[Option[DateTime]].head).await() should be(Some(new DateTime(2012, 12, 4, 0, 0, 0, 0)))
-      db.run(sql"SELECT opt_instant FROM joda_test WHERE instant = ${new DateTime(2012, 12, 4, 0, 0, 0, 0)}"
-        .as[Option[Instant]].head).await() should be(Some(new DateTime(2012, 12, 4, 0, 0, 0, 0).toInstant))
-      db.run(sql"SELECT opt_local_date_time FROM joda_test WHERE local_date_time = ${new LocalDateTime(2012, 12, 4, 0, 0, 0, 0)}"
-        .as[Option[LocalDateTime]].head).await() should be(Some(new LocalDateTime(2012, 12, 4, 0, 0, 0, 0)))
-      db.run(sql"SELECT opt_local_time FROM joda_test WHERE local_time = ${new LocalTime(0)}"
-        .as[Option[LocalTime]].head).await() should be(Some(new LocalTime(0)))
-      db.run(sql"SELECT local_date FROM joda_test WHERE opt_local_date = ${Some(new LocalDate(2012, 12, 5))}"
-        .as[LocalDate].head).await() should be(new LocalDate(2012, 12, 5))
-      db.run(sql"SELECT date_time FROM joda_test WHERE opt_date_time = ${Some(new DateTime(2012, 12, 4, 0, 0, 0, 0))}"
-        .as[DateTime].head).await() should be(new DateTime(2012, 12, 4, 0, 0, 0, 0))
-      db.run(sql"SELECT instant FROM joda_test WHERE opt_instant = ${Some(new DateTime(2012, 12, 4, 0, 0, 0, 0).toInstant)}"
-        .as[Instant].head).await() should be(new DateTime(2012, 12, 4, 0, 0, 0, 0).toInstant)
-      db.run(sql"SELECT local_date_time FROM joda_test WHERE opt_local_date_time = ${Some(new LocalDateTime(2012, 12, 4, 0, 0, 0, 0))}"
-        .as[LocalDateTime].head).await() should be(new LocalDateTime(2012, 12, 4, 0, 0, 0, 0))
-      db.run(sql"SELECT local_time FROM joda_test WHERE opt_local_time = ${Some(new LocalTime(0))}"
-        .as[LocalTime].head).await() should be(new LocalTime(0))
+      test {
+        db.run(sql"SELECT opt_date_time_zone FROM joda_test WHERE date_time_zone = 'Asia/Tokyo'"
+          .as[Option[DateTimeZone]].head).await() should be(Some(DateTimeZone.forID("Asia/Tokyo")))
+        db.run(sql"SELECT opt_local_date FROM joda_test WHERE local_date = ${new LocalDate(2012, 12, 4)}"
+          .as[Option[LocalDate]].head).await() should be(Some(new LocalDate(2012, 12, 4)))
+        db.run(sql"SELECT opt_date_time FROM joda_test WHERE date_time = ${new DateTime(2012, 12, 4, 0, 0, 0, 0)}"
+          .as[Option[DateTime]].head).await() should be(Some(new DateTime(2012, 12, 4, 0, 0, 0, 0)))
+        db.run(sql"SELECT opt_instant FROM joda_test WHERE instant = ${new DateTime(2012, 12, 4, 0, 0, 0, 0)}"
+          .as[Option[Instant]].head).await() should be(Some(new DateTime(2012, 12, 4, 0, 0, 0, 0).toInstant))
+        db.run(sql"SELECT opt_local_date_time FROM joda_test WHERE local_date_time = ${new LocalDateTime(2012, 12, 4, 0, 0, 0, 0)}"
+          .as[Option[LocalDateTime]].head).await() should be(Some(new LocalDateTime(2012, 12, 4, 0, 0, 0, 0)))
+        db.run(sql"SELECT opt_local_time FROM joda_test WHERE local_time = ${new LocalTime(0)}"
+          .as[Option[LocalTime]].head).await() should be(Some(new LocalTime(0)))
+        db.run(sql"SELECT local_date FROM joda_test WHERE opt_local_date = ${Some(new LocalDate(2012, 12, 5))}"
+          .as[LocalDate].head).await() should be(new LocalDate(2012, 12, 5))
+        db.run(sql"SELECT date_time FROM joda_test WHERE opt_date_time = ${Some(new DateTime(2012, 12, 4, 0, 0, 0, 0))}"
+          .as[DateTime].head).await() should be(new DateTime(2012, 12, 4, 0, 0, 0, 0))
+        db.run(sql"SELECT instant FROM joda_test WHERE opt_instant = ${Some(new DateTime(2012, 12, 4, 0, 0, 0, 0).toInstant)}"
+          .as[Instant].head).await() should be(new DateTime(2012, 12, 4, 0, 0, 0, 0).toInstant)
+        db.run(sql"SELECT local_date_time FROM joda_test WHERE opt_local_date_time = ${Some(new LocalDateTime(2012, 12, 4, 0, 0, 0, 0))}"
+          .as[LocalDateTime].head).await() should be(new LocalDateTime(2012, 12, 4, 0, 0, 0, 0))
+        db.run(sql"SELECT local_time FROM joda_test WHERE opt_local_time = ${Some(new LocalTime(0))}"
+          .as[LocalTime].head).await() should be(new LocalTime(0))
 
-      implicit val getResult: GetResult[(DateTimeZone, LocalDate, DateTime, Instant, LocalDateTime, LocalTime)] = GetResult(r => (r.<<, r.<<, r.<<, r.<<, r.<<, r.<<))
-      implicit val getResult2: GetResult[Jodas] = GetResult(r => Jodas(r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<))
+        implicit val getResult: GetResult[(DateTimeZone, LocalDate, DateTime, DateTime, Instant, LocalDateTime, LocalTime)] = GetResult(r => (r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<))
+        implicit val getResult2: GetResult[Jodas] = GetResult(r => Jodas(r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<, r.<<))
 
-      db.run(sql"SELECT date_time_zone, local_date, date_time, instant, local_date_time, local_time FROM joda_test".as[(DateTimeZone, LocalDate, DateTime, Instant, LocalDateTime, LocalTime)]).await() should have size 3
-      db.run(sql"SELECT date_time_zone, local_date, date_time, instant, local_date_time, local_time, opt_date_time_zone, opt_local_date, opt_date_time, opt_instant, opt_local_date_time, opt_local_time FROM joda_test".as[Jodas]).await() should have size 3
+        db.run(sql"SELECT date_time_zone, local_date, date_time, date_time_with_zone, instant, local_date_time, local_time FROM joda_test".as[(DateTimeZone, LocalDate, DateTime, DateTime, Instant, LocalDateTime, LocalTime)]).await() should have size 3
+        db.run(sql"SELECT date_time_zone, local_date, date_time, date_time_with_zone, instant, local_date_time, local_time, opt_date_time_zone, opt_local_date, opt_date_time, opt_instant, opt_local_date_time, opt_local_time FROM joda_test".as[Jodas]).await() should have size 3
+      }
     }
   }
 
   it("can be used with comparative operators") {
-    db.run(insertTestData()).await()
-    val q1 = jodaTest.filter(_.localDate > new LocalDate(2012, 12, 5))
-    db.run(q1.result).await() should have size 1
+    test {
+      val q1 = jodaTest.filter(_.localDate > new LocalDate(2012, 12, 5))
+      db.run(q1.result).await() should have size 1
+    }
   }
 
   it("should be able to filter with the specified date") {
-    db.run(insertTestData()).await()
-    val q1 = for {
-      jt <- jodaTest
-      if jt.localDate === new LocalDate(2012, 12, 5)
-    } yield jt
+    test {
+      val q1 = for {
+        jt <- jodaTest
+        if jt.localDate === new LocalDate(2012, 12, 5)
+      } yield jt
 
-    val res1 = db.run(q1.result).await()
-    res1 should have size 1
-    res1.headOption.map(_.localDate) should be(Some(new LocalDate(2012, 12, 5)))
+      val res1 = db.run(q1.result).await()
+      res1 should have size 1
+      res1.headOption.map(_.localDate) should be(Some(new LocalDate(2012, 12, 5)))
 
-    val q2 = for {
-      jt <- jodaTest
-      if jt.localDate =!= new LocalDate(2012, 12, 5)
-    } yield jt
-    val res2 = db.run(q2.result).await()
-    res2 should have size 2
-    res2.lift(1).map(_.localDate) should not be Some(new LocalDate(2012, 12, 5))
-    res2.lift(2).map(_.localDate) should not be Some(new LocalDate(2012, 12, 5))
+      val q2 = for {
+        jt <- jodaTest
+        if jt.localDate =!= new LocalDate(2012, 12, 5)
+      } yield jt
+      val res2 = db.run(q2.result).await()
+      res2 should have size 2
+      res2.lift(1).map(_.localDate) should not be Some(new LocalDate(2012, 12, 5))
+      res2.lift(2).map(_.localDate) should not be Some(new LocalDate(2012, 12, 5))
+    }
   }
 }
 
@@ -245,7 +274,10 @@ abstract class TestContainerSpec extends JodaSupportSpec with ForAllTestContaine
 class MySQLJodaSupportSpec extends TestContainerSpec {
   // TODO update 5.7 or later
   // `.schema.create` does not work due to timestamp default value issue
-  override val container = MySQLContainer(mysqlImageVersion = DockerImageName.parse("mysql:5.6.50"))
+  override val container = MySQLContainer(
+    mysqlImageVersion = DockerImageName.parse("mysql:5.6.50"),
+    configurationOverride = "somepath"
+  )
   override def jdbcDriver = "com.mysql.jdbc.Driver"
   override val driver = MySQLProfile
   override val jodaSupport = MySQLJodaSupport
