@@ -81,7 +81,23 @@ abstract class JodaSupportSpec extends AnyFunSpec
     def optInstant = column[Option[Instant]]("opt_instant")
     def optLocalDateTime = column[Option[LocalDateTime]]("opt_local_date_time")
     def optLocalTime = column[Option[LocalTime]]("opt_local_time")
-    def * = (dateTimeZone, localDate, dateTime, instant, localDateTime, localTime, optDateTimeZone, optLocalDate, optDateTime, optInstant, optLocalDateTime, optLocalTime) <> (Jodas.tupled, Jodas.unapply _)
+    def * = (dateTimeZone, localDate, dateTime, instant, localDateTime, localTime, optDateTimeZone, optLocalDate, optDateTime, optInstant, optLocalDateTime, optLocalTime).<>(
+      Jodas.tupled,
+      a => Some((
+        a.dateTimeZone,
+        a.localDate,
+        a.dateTime,
+        a.instant,
+        a.localDateTime,
+        a.localTime,
+        a.optDateTimeZone,
+        a.optLocalDate,
+        a.optDateTime,
+        a.optInstant,
+        a.optLocalDateTime,
+        a.optLocalTime
+      ))
+    )
   }
 
   lazy val db = Database.forURL(url = jdbcUrl, user = jdbcUser, password = jdbcPassword, driver = jdbcDriver)

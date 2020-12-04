@@ -27,6 +27,8 @@
  */
 package com.github.tototoshi.slick.converter
 
+import scala.language.reflectiveCalls
+
 trait SqlTypeConverter[A, B] extends FromTypeConverter[A, B]
   with ToTypeConverter[A, B]
 
@@ -41,7 +43,7 @@ trait ToTypeConverter[A, B] {
   def millisToSqlType(d: { def getTime(): Long }): java.sql.Date = {
     import java.util.Calendar
     val cal = Calendar.getInstance()
-    cal.setTimeInMillis(d.getTime)
+    cal.setTimeInMillis(d.getTime())
     cal.set(Calendar.HOUR_OF_DAY, 0)
     cal.set(Calendar.MINUTE, 0)
     cal.set(Calendar.SECOND, 0)

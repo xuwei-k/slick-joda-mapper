@@ -11,20 +11,31 @@ lazy val `slick-joda-mapper` = project.in(file("."))
     name := "slick-joda-mapper",
     organization := "com.github.tototoshi",
     version := "2.4.2",
-    crossScalaVersions ++= Seq("2.11.12", "2.12.12", "2.13.4"),
+    crossScalaVersions ++= Seq("2.11.12", "2.12.12", "2.13.4", "3.0.0-M2"),
     scalaVersion := "2.12.12",
     scalacOptions ++= Seq("-deprecation", "-language:_"),
+    scalacOptions ++= {
+      CrossVersion.partialVersion(scalaVersion.value) match {
+        case Some((3, _)) =>
+          Seq(
+            "-source", "3.0-migration",
+            "-Xignore-scala2-macros"
+          )
+        case _ =>
+          Nil
+      }
+    },
     libraryDependencies ++= Seq(
       "joda-time" % "joda-time" % "2.10.8" % "provided",
       "org.joda" % "joda-convert" % "2.2.1" % "provided",
       "com.h2database" % "h2" % "[1.4,)" % "test",
-      "com.dimafeng" %% "testcontainers-scala" % "0.38.7" % "test",
+      "com.dimafeng" %% "testcontainers-scala" % "0.38.7" % "test" withDottyCompat scalaVersion.value,
       "mysql" % "mysql-connector-java" % "5.1.49" % "test",
       "org.postgresql" % "postgresql" % "9.4.1212" % "test",
       "org.testcontainers" % "mysql" % testContainerVersion % "test",
       "org.testcontainers" % "postgresql" % testContainerVersion % "test",
       "org.scalatest" %% "scalatest" % "3.2.3" % "test",
-      "com.typesafe.slick" %% "slick" % "3.3.3" % "provided"
+      "com.typesafe.slick" %% "slick" % "3.3.3" % "provided" withDottyCompat scalaVersion.value
     ),
     initialCommands += """
       import org.joda.time._
